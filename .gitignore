@@ -1,0 +1,19 @@
+# ─── Secrets & Credentials ───
+config.py
+credentials.json
+.env
+
+# ─── State & Logs ───
+state.json
+logs.txt
+logs.txt.*
+*.log
+
+# ─── Python cache & venv ───
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+pronote_env/
+.venv/
+.DS_Store
