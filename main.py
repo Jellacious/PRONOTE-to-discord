@@ -851,6 +851,55 @@ async def cmd_notes(ctx: commands.Context):
 
     await ctx.send(embed=embed)
 
+@bot.command(name="profil", aliases=["me"])
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_profil(ctx: commands.Context):
+    """Affiche le profil complet et les informations de l'élève."""
+    client = pronote.get_client()
+    if not client:
+        return await ctx.send("❌ Vous n'êtes pas connecté à Pronote. Tapez `!login` pour vous connecter.")
+
+    info = client.info
+    if not info:
+        return await ctx.send("⚠️ Impossible de récupérer les informations de profil.")
+
+    embed = discord.Embed(
+        title=f"🪪 Profil — {info.name or 'Élève'}",
+        color=discord.Color.blue(),
+        timestamp=datetime.datetime.now()
+    )
+
+    if getattr(info, "class_name", None):
+        embed.add_field(name="🏫 Classe", value=info.class_name, inline=True)
+    if getattr(info, "establishment", None):
+        embed.add_field(name="📍 Établissement", value=info.establishment, inline=True)
+    if getattr(info, "delegue", None) is not None:
+        embed.add_field(name="⭐ Délégué", value="Oui" if info.delegue else "Non", inline=True)
+    if getattr(info, "ine_number", None):
+        embed.add_field(name="🔢 Numéro INE", value=f"`{info.ine_number}`", inline=True)
+    if getattr(info, "email", None):
+        embed.add_field(name="📧 Email", value=info.email, inline=True)
+    if getattr(info, "phone", None):
+        embed.add_field(name="📞 Téléphone", value=info.phone, inline=True)
+    if getattr(info, "address", None):
+        embed.add_field(name="🏠 Adresse", value=str(info.address), inline=False)
+
+    file_to_send = None
+    if getattr(info, "profile_picture", None) and getattr(info.profile_picture, "data", None):
+        try:
+            import io
+            image_data = info.profile_picture.data
+            if image_data:
+                file_to_send = discord.File(io.BytesIO(image_data), filename="profile.png")
+                embed.set_thumbnail(url="attachment://profile.png")
+        except Exception as e:
+            logger.warning(f"Impossible de charger la photo de profil : {e}")
+
+    if file_to_send:
+        await ctx.send(file=file_to_send, embed=embed)
+    else:
+        await ctx.send(embed=embed)
+
 @bot.command(name="absences")
 @commands.cooldown(1, 5, commands.BucketType.user)
 async def cmd_absences(ctx: commands.Context):
@@ -975,6 +1024,7 @@ async def cmd_help(ctx: commands.Context):
     embed.add_field(
         name="📋 Consultation",
         value=(
+            "`!profil` : Profil complet de l'élève (classe, INE, adresse, photo)\n"
             "`!edt [demain|JJ/MM]` : Emploi du temps avec matières, profs et salles\n"
             "`!devoirs [jours]` : Devoirs restants (7 jours par défaut)\n"
             "`!notes` : Dernières notes reçues et moyenne générale\n"

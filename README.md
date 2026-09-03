@@ -80,6 +80,7 @@ L'assistant de configuration vous propose de générer le code PIN et de coller 
 | `!login` | Connexion interactive au compte Pronote |
 | `!logout` | Déconnexion et suppression des identifiants |
 | `!status` | État de la connexion Pronote et de l'autocheck |
+| `!profil` | Affiche le profil complet (classe, établissement, INE, photo) |
 | `!edt [demain\|JJ/MM]` | Affiche l'emploi du temps |
 | `!devoirs [jours]` | Affiche les devoirs (7 jours par défaut) |
 | `!notes` | Affiche les dernières notes et la moyenne générale |
