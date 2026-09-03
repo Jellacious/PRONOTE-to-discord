@@ -1,6 +1,6 @@
 # 🤖 PRONOTE to Discord
 
-Un bot Discord pour recevoir ses alertes PRONOTE (cours modifiés/annulés, nouvelles notes, devoirs, absences) et consulter son emploi du temps à la demande directement en **Messages Privés**.
+Un bot Discord basé sur [pronotepy](https://github.com/bain3/pronotepy) pour recevoir ses alertes PRONOTE (cours modifiés/annulés, nouvelles notes, devoirs, absences) et consulter son emploi du temps à la demande directement en **Messages Privés**.
 
 ---
 
@@ -91,5 +91,5 @@ L'assistant de configuration vous propose de générer le code PIN et de coller 
 | `!autocheck now` | Force une vérification immédiate |
 | `!help` | Affiche l'aide des commandes |
 
-Developed with ❤️ and suffering (because PronotePY sucks) by [Jellacious](https://github.com/jellacious).
+Developed with ❤️ by [Jellacious](https://github.com/jellacious).
 Note : AI was used in this project.
