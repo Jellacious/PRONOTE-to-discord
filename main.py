@@ -201,6 +201,25 @@ def hw_to_dict(hw) -> dict:
 def hw_id(hw: dict) -> str:
     return f"{hw['date']}-{hw['subject']}-{hw['description'][:30]}"
 
+DAYS_FR = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
+MONTHS_FR = [
+    "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+    "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
+]
+
+def format_date_fr(d: datetime.date | datetime.datetime, include_year: bool = True) -> str:
+    """Formate une date en français complet (ex: Vendredi 04 Septembre 2026)."""
+    weekday = DAYS_FR[d.weekday()]
+    month = MONTHS_FR[d.month - 1]
+    if include_year:
+        return f"{weekday} {d.day:02d} {month} {d.year}"
+    return f"{weekday} {d.day:02d} {month}"
+
+def format_short_date_fr(d: datetime.date | datetime.datetime) -> str:
+    """Formate un jour court en français (ex: Vendredi 04/09)."""
+    weekday = DAYS_FR[d.weekday()]
+    return f"{weekday} {d.day:02d}/{d.month:02d}"
+
 def get_end_of_week_plus_monday(today: datetime.date) -> datetime.date:
     days_until_friday = 4 - today.weekday()
     if days_until_friday < 0:
@@ -304,7 +323,7 @@ async def on_command_error(ctx: commands.Context, error: Exception):
 
 # ─── Génération des Embeds de Récap / Alertes ──────────────────
 def build_edt_embed(client: pronotepy.Client, target_date: datetime.date, title_prefix: str = "📅 Emploi du temps") -> discord.Embed:
-    day_str = target_date.strftime("%A %d %B %Y").capitalize()
+    day_str = format_date_fr(target_date)
     embed = discord.Embed(
         title=f"{title_prefix} — {day_str}",
         color=discord.Color.blurple(),
@@ -357,7 +376,7 @@ def build_homework_embed(client: pronotepy.Client, max_days: int = 7) -> discord
             by_date.setdefault(hw.date, []).append(hw)
 
         for d, list_hw in by_date.items():
-            field_name = f"🗓️ {d.strftime('%A %d/%m').capitalize()}"
+            field_name = f"🗓️ {format_short_date_fr(d)}"
             lines = []
             for hw in list_hw:
                 status = "✅" if hw.done else "❌"
@@ -372,7 +391,7 @@ def build_homework_embed(client: pronotepy.Client, max_days: int = 7) -> discord
 
 def build_menu_embed(client: pronotepy.Client, target_date: datetime.date) -> discord.Embed:
     embed = discord.Embed(
-        title=f"🍽️ Menu de la cantine — {target_date.strftime('%d/%m/%Y')}",
+        title=f"🍽️ Menu de la cantine — {format_date_fr(target_date)}",
         color=discord.Color.gold(),
         timestamp=datetime.datetime.now()
     )
@@ -430,7 +449,7 @@ async def run_autocheck_cycle(send_notifications: bool = True) -> list[discord.E
         new_lessons = new_edt[day_key]
 
         if old_lessons is not None and old_lessons != new_lessons:
-            day_formatted = day.strftime("%A %d %B").capitalize()
+            day_formatted = format_date_fr(day, include_year=False)
             embed = discord.Embed(
                 title=f"🔄 Modification EDT — {day_formatted}",
                 color=discord.Color.orange(),
@@ -873,16 +892,24 @@ async def cmd_profil(ctx: commands.Context):
         embed.add_field(name="🏫 Classe", value=info.class_name, inline=True)
     if getattr(info, "establishment", None):
         embed.add_field(name="📍 Établissement", value=info.establishment, inline=True)
-    if getattr(info, "delegue", None) is not None:
-        embed.add_field(name="⭐ Délégué", value="Oui" if info.delegue else "Non", inline=True)
+    if getattr(info, "delegue", False):
+        embed.add_field(name="⭐ Rôle", value="Délégué(e) de classe", inline=True)
     if getattr(info, "ine_number", None):
         embed.add_field(name="🔢 Numéro INE", value=f"`{info.ine_number}`", inline=True)
     if getattr(info, "email", None):
         embed.add_field(name="📧 Email", value=info.email, inline=True)
     if getattr(info, "phone", None):
         embed.add_field(name="📞 Téléphone", value=info.phone, inline=True)
-    if getattr(info, "address", None):
-        embed.add_field(name="🏠 Adresse", value=str(info.address), inline=False)
+
+    # Nettoyage de l'adresse (gestion des tuples/listes d'éléments vides)
+    raw_addr = getattr(info, "address", None)
+    if raw_addr:
+        if isinstance(raw_addr, (list, tuple)):
+            clean_parts = [str(part).strip() for part in raw_addr if str(part).strip()]
+            if clean_parts:
+                embed.add_field(name="🏠 Adresse", value=", ".join(clean_parts), inline=False)
+        elif str(raw_addr).strip() and str(raw_addr).strip() != "('', '', '', '', '', '', '', '')":
+            embed.add_field(name="🏠 Adresse", value=str(raw_addr).strip(), inline=False)
 
     file_to_send = None
     if getattr(info, "profile_picture", None) and getattr(info.profile_picture, "data", None):
