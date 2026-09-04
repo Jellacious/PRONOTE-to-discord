@@ -122,6 +122,7 @@ OWNER_ID = int(getattr(config, "OWNER_ID", 0))
 AUTOCHECK_ENABLED = getattr(config, "AUTOCHECK_ENABLED", True)
 AUTOCHECK_INTERVAL_MINUTES = getattr(config, "AUTOCHECK_INTERVAL_MINUTES", 15)
 MORNING_RECAP_TIME = getattr(config, "MORNING_RECAP_TIME", "07:00")
+PRONOTE_RENEWAL_PIN = getattr(config, "PRONOTE_RENEWAL_PIN", None)
 
 STATE_FILE = SCRIPT_DIR / "state.json"
 CREDENTIALS_FILE = SCRIPT_DIR / "credentials.json"
@@ -190,6 +191,15 @@ def format_lesson_line(l: dict) -> str:
     prof = f" ({l['teacher']})" if l["teacher"] else ""
     return f"{status_icon} **{l['start']}** - {l['subject']}{prof}{salle}{annule}"
 
+def format_hw_date(iso_date: str) -> str:
+    try:
+        parts = iso_date.split('-')
+        if len(parts) == 3:
+            return f"{parts[2]}/{parts[1]}"
+    except Exception:
+        pass
+    return iso_date
+
 def hw_to_dict(hw) -> dict:
     return {
         "date": hw.date.isoformat(),
@@ -236,23 +246,79 @@ class PronoteSession:
     def is_connected(self) -> bool:
         return self._client is not None and self._client.logged_in
 
+    def _save_credentials(self, creds: dict):
+        """Sauvegarde de manière sécurisée les identifiants dans credentials.json."""
+        try:
+            CREDENTIALS_FILE.write_text(json.dumps(creds, ensure_ascii=False, indent=2), encoding="utf-8")
+            logger.info("💾 credentials.json mis à jour avec succès.")
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de l'écriture de credentials.json : {e}")
+
     def get_client(self) -> pronotepy.Client | None:
-        """Récupère ou reconnecte le client Pronote."""
+        """Récupère ou reconnecte le client Pronote (avec renouvellement auto par PIN si expiré)."""
         if not CREDENTIALS_FILE.exists():
             return None
 
         try:
             credentials = json.loads(CREDENTIALS_FILE.read_text(encoding="utf-8"))
-            client = pronotepy.Client.token_login(**credentials)
-            if client.logged_in:
-                # Sauvegarde du nouveau jeton renouvelé
-                CREDENTIALS_FILE.write_text(json.dumps(client.export_credentials(), indent=2), encoding="utf-8")
-                self._client = client
-                return client
-            return None
         except Exception as e:
-            logger.error(f"Erreur lors de la connexion via token Pronote : {e}")
+            logger.error(f"Erreur lors de la lecture de credentials.json : {e}")
             return None
+
+        client = None
+
+        # Tentative 1 : token_login
+        if "qr_code" not in credentials:
+            try:
+                client = pronotepy.Client.token_login(**credentials)
+                if not client.logged_in:
+                    client = None
+            except Exception as e:
+                logger.warning(f"⚠️ Échec du token_login ({e}), tentative de renouvellement automatique...")
+                client = None
+
+        # Tentative 2 (Fallback) : renouvellement via QR code / PIN si disponible
+        if client is None:
+            pin = PRONOTE_RENEWAL_PIN or credentials.get("pin")
+            qr_data = credentials.get("qr_code") or credentials.get("qr_data")
+            uuid = credentials.get("uuid", "")
+
+            if qr_data and pin:
+                logger.info("🔄 Renouvellement automatique Pronote avec le QR code et le PIN...")
+                try:
+                    url = qr_data.get("url", "") if isinstance(qr_data, dict) else ""
+                    if url.endswith("parent.html"):
+                        client_class = pronotepy.ParentClient
+                    elif url.endswith("viescolaire.html"):
+                        client_class = pronotepy.VieScolaireClient
+                    else:
+                        client_class = pronotepy.Client
+
+                    client = client_class.qrcode_login(
+                        qr_code=qr_data,
+                        pin=str(pin),
+                        uuid=uuid
+                    )
+                    if not client.logged_in:
+                        client = None
+                except Exception as e:
+                    logger.error(f"❌ Échec du renouvellement qrcode_login : {e}")
+                    client = None
+
+        if client and client.logged_in:
+            updated_creds = client.export_credentials()
+            if "qr_code" in credentials:
+                updated_creds["qr_code"] = credentials["qr_code"]
+            if "qr_data" in credentials:
+                updated_creds["qr_data"] = credentials["qr_data"]
+            if "pin" in credentials:
+                updated_creds["pin"] = credentials["pin"]
+
+            self._save_credentials(updated_creds)
+            self._client = client
+            return client
+
+        return None
 
     def login_with_qrcode(self, qr_data: dict | str, pin: str) -> tuple[bool, str]:
         """Authentifie avec les données du QR Code et le code PIN."""
@@ -275,7 +341,10 @@ class PronoteSession:
             client = client_class.qrcode_login(qr_dict, pin, uuid_device)
 
             if client.logged_in:
-                CREDENTIALS_FILE.write_text(json.dumps(client.export_credentials(), indent=2), encoding="utf-8")
+                creds = client.export_credentials()
+                creds["qr_code"] = qr_dict
+                creds["pin"] = str(pin)
+                self._save_credentials(creds)
                 self._client = client
                 name = client.info.name if client.info else "Utilisateur"
                 logger.info(f"Connexion QR code réussie pour {name}")
@@ -561,7 +630,7 @@ async def run_autocheck_cycle(send_notifications: bool = True) -> list[discord.E
                     color=discord.Color.blue(),
                     timestamp=datetime.datetime.now()
                 )
-                embed.add_field(name="Pour le", value=f"🗓️ {d['date'][5:].replace('-', '/')}", inline=True)
+                embed.add_field(name="Pour le", value=f"🗓️ {format_hw_date(d['date'])}", inline=True)
                 embed.add_field(name="Matière", value=d["subject"], inline=True)
                 embed.add_field(name="Consigne", value=d["description"] or "Pas de description", inline=False)
                 hw_alerts.append(embed)
@@ -573,7 +642,7 @@ async def run_autocheck_cycle(send_notifications: bool = True) -> list[discord.E
                         color=discord.Color.gold(),
                         timestamp=datetime.datetime.now()
                     )
-                    embed.add_field(name="Pour le", value=f"🗓️ {d['date'][5:].replace('-', '/')}", inline=False)
+                    embed.add_field(name="Pour le", value=f"🗓️ {format_hw_date(d['date'])}", inline=False)
                     embed.add_field(name="Avant", value=old["description"] or "Vide", inline=False)
                     embed.add_field(name="Après", value=d["description"] or "Vide", inline=False)
                     hw_alerts.append(embed)
