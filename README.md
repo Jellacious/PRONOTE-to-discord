@@ -92,5 +92,10 @@ L'assistant de configuration vous propose de générer le code PIN et de coller 
 | `!autocheck now` | Force une vérification immédiate |
 | `!help` | Affiche l'aide des commandes |
 
+---
+
+## ⚖️ Disclaimer
+Projet personnel et non officiel, non affilié à Index Éducation / PRONOTE. Destiné à un usage strictement privé et auto-hébergé. Vous êtes seul responsable de l'utilisation de vos identifiants.
+
 Developed with ❤️ by [Jellacious](https://github.com/jellacious).
 Note : AI was used in this project.
