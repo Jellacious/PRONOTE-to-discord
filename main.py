@@ -127,6 +127,7 @@ PRONOTE_RENEWAL_PIN = getattr(config, "PRONOTE_RENEWAL_PIN", None)
 STATE_FILE = SCRIPT_DIR / "state.json"
 CREDENTIALS_FILE = SCRIPT_DIR / "credentials.json"
 LOG_FILE = SCRIPT_DIR / "logs.txt"
+BOT_VERSION = "1.0.0"
 
 # ─── Configuration des Logs ───────────────────────────────────
 logger = logging.getLogger("pronote_discord_bot")
@@ -242,6 +243,7 @@ def get_end_of_week_plus_monday(today: datetime.date) -> datetime.date:
 class PronoteSession:
     def __init__(self):
         self._client: pronotepy.Client | None = None
+        self._last_login: datetime.datetime | None = None
 
     def is_connected(self) -> bool:
         return self._client is not None and self._client.logged_in
@@ -254,8 +256,23 @@ class PronoteSession:
         except Exception as e:
             logger.error(f"❌ Erreur lors de l'écriture de credentials.json : {e}")
 
-    def get_client(self) -> pronotepy.Client | None:
-        """Récupère ou reconnecte le client Pronote (avec renouvellement auto par PIN si expiré)."""
+    def get_client(self, force_refresh: bool = False) -> pronotepy.Client | None:
+        """Récupère ou reconnecte le client Pronote (réutilise la session en cache et rafraîchit si > 2h ou expirée)."""
+        now = datetime.datetime.now()
+
+        # Si le client est déjà connecté et récent (< 2 heures), on réutilise la session existante
+        if not force_refresh and self._client is not None and self._client.logged_in:
+            if self._last_login and (now - self._last_login).total_seconds() < 7200: # 2 heures
+                try:
+                    self._client.session_check()
+                    return self._client
+                except Exception as e:
+                    logger.warning(f"⚠️ Session Pronote expirée ({e}), renouvellement nécessaire.")
+                    self._client = None
+            else:
+                logger.info("🔄 Session Pronote de plus de 2h, renouvellement propre du token...")
+                self._client = None
+
         if not CREDENTIALS_FILE.exists():
             return None
 
@@ -316,6 +333,7 @@ class PronoteSession:
 
             self._save_credentials(updated_creds)
             self._client = client
+            self._last_login = now
             return client
 
         return None
@@ -346,6 +364,7 @@ class PronoteSession:
                 creds["pin"] = str(pin)
                 self._save_credentials(creds)
                 self._client = client
+                self._last_login = datetime.datetime.now()
                 name = client.info.name if client.info else "Utilisateur"
                 logger.info(f"Connexion QR code réussie pour {name}")
                 return True, f"Connecté avec succès en tant que **{name}** !"
@@ -360,6 +379,7 @@ class PronoteSession:
     def logout(self):
         """Supprime les identifiants locaux."""
         self._client = None
+        self._last_login = None
         if CREDENTIALS_FILE.exists():
             CREDENTIALS_FILE.unlink()
         logger.info("Deconnexion Pronote effectuee.")
@@ -1139,6 +1159,7 @@ async def cmd_help(ctx: commands.Context):
         ),
         inline=False
     )
+    embed.set_footer(text=f"Pronote to Discord • v{BOT_VERSION}")
     await ctx.send(embed=embed)
 
 if __name__ == "__main__":
