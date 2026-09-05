@@ -19,7 +19,7 @@ Un bot Discord basé sur [pronotepy](https://github.com/bain3/pronotepy) pour re
   - `!recap` : Déclenche le récapitulatif complet du matin.
 - **🔄 Surveillance Automatique (Autocheck)** :
   - Boucle en arrière-plan toutes les XX minutes pour notifier dès qu'un changement survient (nouvelle note, cours déplacé ou annulé, devoir ajouté).
-  - Récapitulatif envoyé automatiquement chaque jour à l'heure configurée.
+  - Récapitulatif envoyé automatiquement chaque matin (du lundi au vendredi par défaut, activable le week-end via la configuration).
 
 ---
 

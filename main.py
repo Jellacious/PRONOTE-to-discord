@@ -122,6 +122,7 @@ OWNER_ID = int(getattr(config, "OWNER_ID", 0))
 AUTOCHECK_ENABLED = getattr(config, "AUTOCHECK_ENABLED", True)
 AUTOCHECK_INTERVAL_MINUTES = getattr(config, "AUTOCHECK_INTERVAL_MINUTES", 15)
 MORNING_RECAP_TIME = getattr(config, "MORNING_RECAP_TIME", "07:00")
+MORNING_RECAP_WEEKEND = getattr(config, "MORNING_RECAP_WEEKEND", False)
 PRONOTE_RENEWAL_PIN = getattr(config, "PRONOTE_RENEWAL_PIN", None)
 
 STATE_FILE = SCRIPT_DIR / "state.json"
@@ -705,6 +706,9 @@ async def morning_recap_task():
         return
 
     if now.hour == target_hour and now.minute == target_minute:
+        if not MORNING_RECAP_WEEKEND and now.weekday() in (5, 6):
+            return  # Désactivé le week-end (samedi=5, dimanche=6)
+
         state = load_state()
         today = datetime.date.today()
         if state.get("daily_done_date") == today.isoformat():
@@ -856,7 +860,9 @@ async def cmd_status(ctx: commands.Context):
     )
     embed.add_field(name="Compte Pronote", value=f"{'🟢 Connecté' if connected else '🔴 Déconnecté'} ({name})", inline=False)
     embed.add_field(name="Autocheck", value=f"{'🟢 Actif' if autocheck_task.is_running() else '🔴 Inactif'} (toutes les {AUTOCHECK_INTERVAL_MINUTES} min)", inline=True)
-    embed.add_field(name="Récap du matin", value=f"⏰ Programmée à {MORNING_RECAP_TIME}", inline=True)
+    weekend_str = " (tous les jours)" if MORNING_RECAP_WEEKEND else " (lun-ven)"
+    recap_status_str = f"⏰ Programmée à {MORNING_RECAP_TIME}{weekend_str}" if MORNING_RECAP_TIME and MORNING_RECAP_TIME.lower() != "off" else "🔴 Désactivé"
+    embed.add_field(name="Récap du matin", value=recap_status_str, inline=True)
     await ctx.send(embed=embed)
 
 @bot.command(name="edt")

@@ -213,9 +213,10 @@ def ask_configuration():
     autocheck = True
     interval = 15
     morning_recap = "07:00"
+    morning_recap_weekend = False
 
     if configure_now not in ["o", "oui", "y", "yes"]:
-        return autocheck, interval, morning_recap, False
+        return autocheck, interval, morning_recap, morning_recap_weekend, False
 
     print("\n--- Configuration des options ---")
 
@@ -245,6 +246,7 @@ def ask_configuration():
     morning_enable = input("Recevoir automatiquement le récapitulatif chaque matin ? (O/n, défaut: Oui) : ").strip().lower()
     if morning_enable in ["n", "non", "no", "false"]:
         morning_recap = "off"
+        morning_recap_weekend = False
     else:
         while True:
             recap_input = input("Heure d'envoi du récapitulatif matinal (HH:MM, défaut: 07:00) : ").strip()
@@ -260,11 +262,14 @@ def ask_configuration():
             else:
                 print("Format invalide. Veuillez entrer une heure au format HH:MM (ex: 07:00, 08:30).")
 
+        recap_weekend_input = input("Recevoir aussi le récapitulatif le week-end (samedi/dimanche) ? (o/N, défaut: Non) : ").strip().lower()
+        morning_recap_weekend = True if recap_weekend_input in ["o", "oui", "y", "yes", "true"] else False
+
     # 4. Connexion Pronote immédiate
     want_login = input("\nSouhaitez-vous vous connecter à votre compte Pronote dès maintenant ? (O/n, défaut: Oui) : ").strip().lower()
     do_pronote_login = False if want_login in ["n", "non", "no", "false"] else True
 
-    return autocheck, interval, morning_recap, do_pronote_login
+    return autocheck, interval, morning_recap, morning_recap_weekend, do_pronote_login
 
 def main():
     clear_screen()
@@ -279,7 +284,7 @@ def main():
         print()
 
     token, owner_id, bot_name, owner_name = ask_token()
-    autocheck, interval, morning_recap, do_login = ask_configuration()
+    autocheck, interval, morning_recap, morning_recap_weekend, do_login = ask_configuration()
 
     if do_login:
         setup_pronote_login()
@@ -297,6 +302,7 @@ OWNER_ID = {owner_id}
 AUTOCHECK_ENABLED = {autocheck}
 AUTOCHECK_INTERVAL_MINUTES = {interval}
 MORNING_RECAP_TIME = "{morning_recap}"
+MORNING_RECAP_WEEKEND = {morning_recap_weekend}
 """
 
     CONFIG_FILE.write_text(config_content, encoding="utf-8")
