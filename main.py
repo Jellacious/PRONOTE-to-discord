@@ -969,7 +969,12 @@ async def cmd_login(ctx: commands.Context):
     else:
         embed_fail = discord.Embed(
             title="❌ Échec de connexion",
-            description=f"{reply}\n\n*Assurez-vous d'avoir bien tapé le code `{pin}` lors de la création du QR Code sur Pronote.*",
+            description=(
+                f"{reply}\n\n"
+                f"💡 **Conseils en cas d'erreur :**\n"
+                f"• Vérifiez que le code PIN saisi sur Pronote correspondait bien à **`{pin}`**.\n"
+                f"• Si vous êtes **sûr de votre code PIN, du QR code et de sa validité**, il est très probable que Pronote applique une limitation temporaire (rate limit/blocage temporaire des tentatives). Dans ce cas, **il est préférable de patienter quelques minutes / heures avant de réessayer**."
+            ),
             color=discord.Color.red()
         )
         await msg_status.edit(content=None, embed=embed_fail)

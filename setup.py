@@ -199,10 +199,11 @@ def setup_pronote_login():
             name = client.info.name if client.info else "Utilisateur"
             print(f"Connexion Pronote réussie pour {name} !")
         else:
-            print("Échec de la connexion Pronote. Vous pourrez réessayer sur Discord avec !login.")
+            print("Échec de la connexion Pronote.")
+            print("💡 Si vous êtes sûr du code PIN et de la validité du QR code, Pronote vous a peut-être temporairement restreint (rate limit). Il est préférable de patienter un peu avant de réessayer avec !login sur Discord.")
     except Exception as e:
         print(f"Erreur lors de la connexion Pronote : {e}")
-        print("Vous pourrez lier votre compte sur Discord avec !login.")
+        print("💡 Si vous êtes sûr du code PIN et de la validité du QR code, Pronote applique peut-être un blocage temporaire (rate limit). Vous pourrez réessayer plus tard sur Discord avec !login.")
 
 def ask_configuration():
     print("\n" + "-" * 60)
