@@ -128,7 +128,7 @@ PRONOTE_RENEWAL_PIN = getattr(config, "PRONOTE_RENEWAL_PIN", None)
 STATE_FILE = SCRIPT_DIR / "state.json"
 CREDENTIALS_FILE = SCRIPT_DIR / "credentials.json"
 LOG_FILE = SCRIPT_DIR / "logs.txt"
-BOT_VERSION = "1.0.0"
+BOT_VERSION = "1.1.0"
 
 # ─── Configuration des Logs ───────────────────────────────────
 logger = logging.getLogger("pronote_discord_bot")
@@ -169,7 +169,10 @@ def load_state() -> dict:
         "edt": {},
         "grades": [],
         "homework": {},
-        "absences": []
+        "absences": [],
+        "informations": [],
+        "discussions": [],
+        "punishments": []
     }
 
 def save_state(state: dict):
@@ -673,6 +676,142 @@ async def run_autocheck_cycle(send_notifications: bool = True) -> list[discord.E
     except Exception as e:
         logger.warning(f"Erreur check devoirs : {e}")
 
+    # 5. Surveillance Informations & Sondages
+    seen_infos = set(state.get("informations", []))
+    new_seen_infos = set(seen_infos)
+    info_alerts = []
+    try:
+        infos = client.information_and_surveys()
+        for info in infos:
+            info_id = str(info.id) if getattr(info, "id", None) else f"{info.title}-{getattr(info, 'creation_date', '')}"
+            if info_id not in new_seen_infos:
+                new_seen_infos.add(info_id)
+                embed = discord.Embed(
+                    title="📢 Nouvelle information publiée",
+                    description=f"**{info.title}**" if info.title else "Information sans titre",
+                    color=discord.Color.teal(),
+                    timestamp=datetime.datetime.now()
+                )
+                if getattr(info, "author", None):
+                    embed.add_field(name="Auteur", value=info.author, inline=True)
+                if getattr(info, "category", None):
+                    embed.add_field(name="Catégorie", value=info.category, inline=True)
+                if getattr(info, "creation_date", None):
+                    cdate = info.creation_date.strftime("%d/%m/%Y %H:%M") if hasattr(info.creation_date, "strftime") else str(info.creation_date)
+                    embed.add_field(name="Date", value=cdate, inline=True)
+                
+                content_text = getattr(info, "content", "")
+                if content_text:
+                    if len(content_text) > 1000:
+                        content_text = content_text[:1000] + "..."
+                    embed.add_field(name="Contenu", value=content_text, inline=False)
+                
+                attachments = getattr(info, "attachments", [])
+                if attachments:
+                    att_links = []
+                    for att in attachments:
+                        att_name = getattr(att, "name", "Fichier joint")
+                        att_url = getattr(att, "url", None)
+                        if att_url:
+                            att_links.append(f"[{att_name}]({att_url})")
+                        else:
+                            att_links.append(f"📎 {att_name}")
+                    embed.add_field(name="Pièces jointes", value="\n".join(att_links), inline=False)
+
+                if getattr(info, "survey", None):
+                    embed.add_field(name="📊 Sondage", value="Un sondage est inclus (à remplir sur Pronote)", inline=False)
+                
+                info_alerts.append(embed)
+        state["informations"] = list(new_seen_infos)
+        alerts.extend(info_alerts)
+    except Exception as e:
+        logger.warning(f"Erreur check informations : {e}")
+
+    # 6. Surveillance Discussions / Messages
+    seen_discussions = set(state.get("discussions", []))
+    new_seen_discussions = set(seen_discussions)
+    disc_alerts = []
+    try:
+        discussions = client.discussions
+        if discussions:
+            for disc in discussions:
+                messages = getattr(disc, "messages", [])
+                last_msg = messages[-1] if messages else None
+                last_msg_id = getattr(last_msg, "id", None) if last_msg else None
+                disc_key = f"{getattr(disc, 'id', disc.subject)}-{last_msg_id}"
+                
+                if disc_key not in new_seen_discussions:
+                    new_seen_discussions.add(disc_key)
+                    # Alerte si non lu ou si nouveau message reçu
+                    unread_badge = " [NON LU]" if getattr(disc, "unread", 0) > 0 else ""
+                    embed = discord.Embed(
+                        title=f"💬 Nouveau message Pronote{unread_badge}",
+                        description=f"**Sujet :** {disc.subject or 'Sans objet'}",
+                        color=discord.Color.purple(),
+                        timestamp=datetime.datetime.now()
+                    )
+                    if getattr(disc, "creator", None):
+                        embed.add_field(name="Interlocuteur", value=disc.creator, inline=True)
+                    if last_msg:
+                        author = getattr(last_msg, "author", "Inconnu")
+                        date_str = last_msg.date.strftime("%d/%m/%Y %H:%M") if hasattr(last_msg, "date") and hasattr(last_msg.date, "strftime") else ""
+                        msg_preview = getattr(last_msg, "content", "Pas de texte")
+                        if len(msg_preview) > 1000:
+                            msg_preview = msg_preview[:1000] + "..."
+                        field_title = f"Dernier message de {author}" + (f" ({date_str})" if date_str else "")
+                        embed.add_field(name=field_title, value=msg_preview, inline=False)
+                    
+                    disc_alerts.append(embed)
+        state["discussions"] = list(new_seen_discussions)
+        alerts.extend(disc_alerts)
+    except Exception as e:
+        logger.warning(f"Erreur check discussions : {e}")
+
+    # 7. Surveillance Punitions & Sanctions
+    seen_punishments = set(state.get("punishments", []))
+    new_seen_punishments = set(seen_punishments)
+    punish_alerts = []
+    try:
+        for period in client.periods:
+            for punish in getattr(period, "punishments", []):
+                punish_id = str(punish.id) if getattr(punish, "id", None) else f"{getattr(punish, 'given', '')}-{getattr(punish, 'nature', '')}"
+                if punish_id not in new_seen_punishments:
+                    new_seen_punishments.add(punish_id)
+                    embed = discord.Embed(
+                        title="⚠️ Nouvelle punition / sanction enregistrée",
+                        color=discord.Color.dark_red(),
+                        timestamp=datetime.datetime.now()
+                    )
+                    if getattr(punish, "nature", None):
+                        embed.add_field(name="Nature", value=punish.nature, inline=True)
+                    if getattr(punish, "giver", None):
+                        embed.add_field(name="Par", value=punish.giver, inline=True)
+                    if getattr(punish, "given", None):
+                        gdate = punish.given.strftime("%d/%m/%Y") if hasattr(punish.given, "strftime") else str(punish.given)
+                        embed.add_field(name="Donnée le", value=gdate, inline=True)
+                    if getattr(punish, "reasons", None):
+                        reasons_txt = ", ".join(str(r) for r in punish.reasons)
+                        embed.add_field(name="Motif", value=reasons_txt, inline=False)
+                    if getattr(punish, "circumstances", None):
+                        embed.add_field(name="Circonstances", value=punish.circumstances, inline=False)
+                    if getattr(punish, "duration", None):
+                        embed.add_field(name="Durée", value=f"{punish.duration} min", inline=True)
+                    if getattr(punish, "homework", None):
+                        embed.add_field(name="Travail à faire", value=punish.homework, inline=False)
+                    if getattr(punish, "schedule", None):
+                        sched_lines = []
+                        for s in punish.schedule:
+                            s_start = s.start.strftime("%d/%m %H:%M") if hasattr(s, "start") and hasattr(s.start, "strftime") else ""
+                            sched_lines.append(f"• {s_start} (Durée: {getattr(s, 'duration', '?')} min)")
+                        if sched_lines:
+                            embed.add_field(name="Retenue programmée", value="\n".join(sched_lines), inline=False)
+
+                    punish_alerts.append(embed)
+        state["punishments"] = list(new_seen_punishments)
+        alerts.extend(punish_alerts)
+    except Exception as e:
+        logger.warning(f"Erreur check punitions : {e}")
+
     save_state(state)
     return alerts
 
@@ -1048,6 +1187,9 @@ async def cmd_absences(ctx: commands.Context):
         if unique_absences:
             lines = []
             for a in sorted(unique_absences, key=lambda x: x.from_date, reverse=True):
+                f = a.from_date.strftime("%d/%m %H:%M")
+                t = a.to_date.strftime("%d/%m %H:%M")
+                just = "✅ Justifiée" if a.justified else "❌ Non justifiée"
                 hours_str = str(a.hours).replace("h00", "h") if getattr(a, "hours", None) else ""
                 hours_display = f" ({hours_str})" if hours_str else ""
                 reasons_list = [r.name if hasattr(r, "name") else str(r) for r in a.reasons] if getattr(a, "reasons", None) else []
@@ -1061,6 +1203,185 @@ async def cmd_absences(ctx: commands.Context):
         embed.description = f"⚠️ Erreur lors de la récupération des absences : {e}"
 
     await ctx.send(embed=embed)
+
+@bot.command(name="infos", aliases=["actualites", "actus", "sondages"])
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_infos(ctx: commands.Context, limit: int = 5):
+    """Affiche les informations, actualités et sondages de l'établissement."""
+    client = pronote.get_client()
+    if not client:
+        return await ctx.send("❌ Vous n'êtes pas connecté à Pronote. Tapez `!login` pour vous connecter.")
+
+    limit = max(1, min(limit, 10))
+    try:
+        infos = client.information_and_surveys()
+        if not infos:
+            embed = discord.Embed(
+                title="📢 Informations & Actualités",
+                description="Aucune information ou actualité publiée actuellement.",
+                color=discord.Color.teal(),
+                timestamp=datetime.datetime.now()
+            )
+            return await ctx.send(embed=embed)
+
+        infos_sorted = sorted(
+            infos,
+            key=lambda x: getattr(x, "creation_date", datetime.datetime.min) or datetime.datetime.min,
+            reverse=True
+        )[:limit]
+
+        await ctx.send(f"📢 **Dernières informations ({len(infos_sorted)} affichée(s)) :**")
+
+        for info in infos_sorted:
+            embed = discord.Embed(
+                title=info.title or "Information",
+                color=discord.Color.teal(),
+                timestamp=datetime.datetime.now()
+            )
+            if getattr(info, "author", None):
+                embed.add_field(name="Auteur", value=info.author, inline=True)
+            if getattr(info, "category", None):
+                embed.add_field(name="Catégorie", value=info.category, inline=True)
+            if getattr(info, "creation_date", None):
+                cdate = info.creation_date.strftime("%d/%m/%Y %H:%M") if hasattr(info.creation_date, "strftime") else str(info.creation_date)
+                embed.add_field(name="Date", value=cdate, inline=True)
+
+            content_text = getattr(info, "content", "")
+            if content_text:
+                if len(content_text) > 1000:
+                    content_text = content_text[:1000] + "..."
+                embed.add_field(name="Contenu", value=content_text, inline=False)
+
+            attachments = getattr(info, "attachments", [])
+            if attachments:
+                att_links = []
+                for att in attachments:
+                    att_name = getattr(att, "name", "Fichier joint")
+                    att_url = getattr(att, "url", None)
+                    if att_url:
+                        att_links.append(f"[{att_name}]({att_url})")
+                    else:
+                        att_links.append(f"📎 {att_name}")
+                embed.add_field(name="Pièces jointes", value="\n".join(att_links), inline=False)
+
+            if getattr(info, "survey", None):
+                embed.add_field(name="📊 Sondage", value="Un sondage est inclus (à répondre sur Pronote)", inline=False)
+
+            await ctx.send(embed=embed)
+    except Exception as e:
+        await ctx.send(f"⚠️ Erreur lors de la récupération des informations : {e}")
+
+@bot.command(name="messages", aliases=["discussions", "msg"])
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_messages(ctx: commands.Context, limit: int = 5):
+    """Affiche les dernières discussions et messages Pronote (lecture seule)."""
+    client = pronote.get_client()
+    if not client:
+        return await ctx.send("❌ Vous n'êtes pas connecté à Pronote. Tapez `!login` pour vous connecter.")
+
+    limit = max(1, min(limit, 10))
+    embed = discord.Embed(
+        title="💬 Messagerie Pronote (Discussions)",
+        color=discord.Color.purple(),
+        timestamp=datetime.datetime.now()
+    )
+    try:
+        discussions = client.discussions
+        if not discussions:
+            embed.description = "Aucune discussion trouvée dans votre messagerie."
+            return await ctx.send(embed=embed)
+
+        discussions_sorted = sorted(
+            discussions,
+            key=lambda d: (d.messages[-1].date if d.messages and hasattr(d.messages[-1], "date") else datetime.datetime.min),
+            reverse=True
+        )[:limit]
+
+        for disc in discussions_sorted:
+            unread_tag = " 🔴 [Non lu]" if getattr(disc, "unread", 0) > 0 else ""
+            creator = f" • Interlocuteur: {disc.creator}" if getattr(disc, "creator", None) else ""
+            messages = getattr(disc, "messages", [])
+            
+            field_name = f"✉️ {disc.subject or 'Sans objet'}{unread_tag}{creator}"
+            
+            if messages:
+                last_msg = messages[-1]
+                author = getattr(last_msg, "author", "Inconnu")
+                date_str = last_msg.date.strftime("%d/%m %H:%M") if hasattr(last_msg, "date") and hasattr(last_msg.date, "strftime") else ""
+                content = getattr(last_msg, "content", "Pas de texte")
+                if len(content) > 250:
+                    content = content[:250] + "..."
+                field_val = f"**Dernier message par {author}** ({date_str}) :\n{content}"
+            else:
+                field_val = "*Aucun message dans cette discussion.*"
+
+            embed.add_field(name=field_name, value=field_val, inline=False)
+
+        await ctx.send(embed=embed)
+    except Exception as e:
+        embed.description = f"⚠️ Erreur lors de la récupération des messages : {e}"
+        await ctx.send(embed=embed)
+
+@bot.command(name="punitions", aliases=["sanctions", "retenues"])
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_punitions(ctx: commands.Context):
+    """Affiche les punitions, sanctions, observations et retenues."""
+    client = pronote.get_client()
+    if not client:
+        return await ctx.send("❌ Vous n'êtes pas connecté à Pronote. Tapez `!login` pour vous connecter.")
+
+    embed = discord.Embed(
+        title="⚠️ Punitions & Sanctions",
+        color=discord.Color.dark_red(),
+        timestamp=datetime.datetime.now()
+    )
+    try:
+        all_punishments = []
+        for period in client.periods:
+            for p in getattr(period, "punishments", []):
+                all_punishments.append(p)
+
+        if not all_punishments:
+            embed.description = "🎉 Aucune punition ni sanction enregistrée !"
+            embed.color = discord.Color.green()
+            return await ctx.send(embed=embed)
+
+        all_punishments_sorted = sorted(
+            all_punishments,
+            key=lambda p: getattr(p, "given", datetime.date.min) or datetime.date.min,
+            reverse=True
+        )
+
+        for p in all_punishments_sorted:
+            nature = getattr(p, "nature", "Sanction / Observation")
+            given_date = p.given.strftime("%d/%m/%Y") if hasattr(p, "given") and hasattr(p.given, "strftime") else "Date inconnue"
+            giver = f" par {p.giver}" if getattr(p, "giver", None) else ""
+            title_field = f"🛑 {nature} (Donnée le {given_date}{giver})"
+            
+            details = []
+            if getattr(p, "reasons", None):
+                reasons_txt = ", ".join(str(r) for r in p.reasons)
+                details.append(f"**Motif :** {reasons_txt}")
+            if getattr(p, "circumstances", None):
+                details.append(f"**Circonstances :** {p.circumstances}")
+            if getattr(p, "duration", None):
+                details.append(f"**Durée :** {p.duration} min")
+            if getattr(p, "homework", None):
+                details.append(f"**Travail supplémentaire :** {p.homework}")
+            if getattr(p, "schedule", None):
+                sched_lines = []
+                for s in p.schedule:
+                    s_start = s.start.strftime("%d/%m/%Y %H:%M") if hasattr(s, "start") and hasattr(s.start, "strftime") else ""
+                    sched_lines.append(f"• {s_start} (Durée: {getattr(s, 'duration', '?')} min)")
+                if sched_lines:
+                    details.append(f"**Retenue(s) programmée(s) :**\n" + "\n".join(sched_lines))
+
+            embed.add_field(name=title_field, value="\n".join(details) if details else "Aucun détail complémentaire", inline=False)
+
+        await ctx.send(embed=embed)
+    except Exception as e:
+        embed.description = f"⚠️ Erreur lors de la récupération des punitions : {e}"
+        await ctx.send(embed=embed)
 
 @bot.command(name="menu")
 @commands.cooldown(1, 5, commands.BucketType.user)
@@ -1151,6 +1472,9 @@ async def cmd_help(ctx: commands.Context):
             "`!devoirs [jours]` : Devoirs restants (7 jours par défaut)\n"
             "`!notes` : Dernières notes reçues et moyenne générale\n"
             "`!absences` : Historique des absences et retards\n"
+            "`!infos [nb]` : Informations, actualités et sondages d'établissement\n"
+            "`!messages [nb]` : Derniers messages et discussions Pronote\n"
+            "`!punitions` : Observations, retenues et devoirs supplémentaires\n"
             "`!menu [demain]` : Menus du restaurant scolaire\n"
             "`!recap` : Déclencher le récapitulatif complet du matin"
         ),

@@ -15,10 +15,13 @@ Un bot Discord basé sur [pronotepy](https://github.com/bain3/pronotepy) pour re
   - `!devoirs [jours]` : Liste des devoirs avec statuts (fait / à faire).
   - `!notes` : Dernières notes reçues et moyennes.
   - `!absences` : Historique des retards et absences.
+  - `!infos [nb]` : Informations, actualités et sondages d'établissement avec pièces jointes.
+  - `!messages [nb]` : Derniers messages et discussions Pronote reçus.
+  - `!punitions` : Observations, retenues et devoirs supplémentaires.
   - `!menu` : Menus du restaurant scolaire.
   - `!recap` : Déclenche le récapitulatif complet du matin.
 - **🔄 Surveillance Automatique (Autocheck)** :
-  - Boucle en arrière-plan toutes les XX minutes pour notifier dès qu'un changement survient (nouvelle note, cours déplacé ou annulé, devoir ajouté).
+  - Boucle en arrière-plan toutes les XX minutes pour notifier dès qu'un changement survient (nouvelle note, cours déplacé ou annulé, devoir ajouté, mot d'établissement, message Pronote, punition).
   - Récapitulatif envoyé automatiquement chaque matin (du lundi au vendredi par défaut, activable le week-end via la configuration).
 
 ---
@@ -85,6 +88,9 @@ L'assistant de configuration vous propose de générer le code PIN et de coller 
 | `!devoirs [jours]` | Affiche les devoirs (7 jours par défaut) |
 | `!notes` | Affiche les dernières notes et la moyenne générale |
 | `!absences` | Affiche les absences et retards |
+| `!infos [nb]` | Affiche les informations, actualités et sondages |
+| `!messages [nb]` | Affiche les dernières discussions reçues sur Pronote |
+| `!punitions` | Affiche les punitions, retenues et observations |
 | `!menu [demain]` | Affiche le menu du restaurant scolaire |
 | `!recap` | Envoie le récapitulatif complet |
 | `!autocheck on / off` | Active ou désactive la surveillance automatique |
