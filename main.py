@@ -128,7 +128,7 @@ PRONOTE_RENEWAL_PIN = getattr(config, "PRONOTE_RENEWAL_PIN", None)
 STATE_FILE = SCRIPT_DIR / "state.json"
 CREDENTIALS_FILE = SCRIPT_DIR / "credentials.json"
 LOG_FILE = SCRIPT_DIR / "logs.txt"
-BOT_VERSION = "1.1.0"
+BOT_VERSION = "1.1.1"
 
 # ─── Configuration des Logs ───────────────────────────────────
 logger = logging.getLogger("pronote_discord_bot")
@@ -732,7 +732,7 @@ async def run_autocheck_cycle(send_notifications: bool = True) -> list[discord.E
     new_seen_discussions = set(seen_discussions)
     disc_alerts = []
     try:
-        discussions = client.discussions
+        discussions = client.discussions()
         if discussions:
             for disc in discussions:
                 messages = getattr(disc, "messages", [])
@@ -1276,7 +1276,7 @@ async def cmd_infos(ctx: commands.Context, limit: int = 5):
     except Exception as e:
         await ctx.send(f"⚠️ Erreur lors de la récupération des informations : {e}")
 
-@bot.command(name="messages", aliases=["discussions", "msg"])
+@bot.command(name="messages")
 @commands.cooldown(1, 5, commands.BucketType.user)
 async def cmd_messages(ctx: commands.Context, limit: int = 5):
     """Affiche les dernières discussions et messages Pronote (lecture seule)."""
@@ -1291,7 +1291,7 @@ async def cmd_messages(ctx: commands.Context, limit: int = 5):
         timestamp=datetime.datetime.now()
     )
     try:
-        discussions = client.discussions
+        discussions = client.discussions()
         if not discussions:
             embed.description = "Aucune discussion trouvée dans votre messagerie."
             return await ctx.send(embed=embed)
@@ -1327,7 +1327,7 @@ async def cmd_messages(ctx: commands.Context, limit: int = 5):
         embed.description = f"⚠️ Erreur lors de la récupération des messages : {e}"
         await ctx.send(embed=embed)
 
-@bot.command(name="punitions", aliases=["sanctions", "retenues"])
+@bot.command(name="punitions")
 @commands.cooldown(1, 5, commands.BucketType.user)
 async def cmd_punitions(ctx: commands.Context):
     """Affiche les punitions, sanctions, observations et retenues."""
