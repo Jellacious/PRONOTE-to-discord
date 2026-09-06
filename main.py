@@ -986,8 +986,8 @@ async def cmd_login(ctx: commands.Context):
             description=(
                 f"{reply}\n\n"
                 f"💡 **Conseils en cas d'erreur :**\n"
-                f"• Vérifiez que le code PIN saisi sur Pronote correspondait bien à **`{pin}`**.\n"
-                f"• Si vous êtes **sûr de votre code PIN, du QR code et de sa validité**, il est très probable que Pronote applique une limitation temporaire (rate limit/blocage temporaire des tentatives). Dans ce cas, **il est préférable de patienter quelques minutes / heures avant de réessayer**."
+                f"• Vérifiez que le code PIN saisi sur PRONOTE correspondait bien à **`{pin}`**.\n"
+                f"• Si vos informations sont correctes, PRONOTE bloque peut-être temporairement les tentatives : patientez quelques minutes avant de réessayer."
             ),
             color=discord.Color.red()
         )
