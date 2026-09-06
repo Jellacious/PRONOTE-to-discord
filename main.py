@@ -288,14 +288,28 @@ class PronoteSession:
 
         client = None
 
-        # Tentative 1 : token_login
-        if "qr_code" not in credentials:
+        # Tentative 1 : token_login (utilisation du token renouvelé)
+        token_keys = ["pronote_url", "username", "password", "uuid"]
+        if all(k in credentials for k in token_keys):
             try:
-                client = pronotepy.Client.token_login(**credentials)
+                url = credentials.get("pronote_url", "")
+                if url.endswith("parent.html"):
+                    client_class = pronotepy.ParentClient
+                elif url.endswith("viescolaire.html"):
+                    client_class = pronotepy.VieScolaireClient
+                else:
+                    client_class = pronotepy.Client
+
+                client = client_class.token_login(
+                    pronote_url=credentials["pronote_url"],
+                    username=credentials["username"],
+                    password=credentials["password"],
+                    uuid=credentials["uuid"]
+                )
                 if not client.logged_in:
                     client = None
             except Exception as e:
-                logger.warning(f"⚠️ Échec du token_login ({e}), tentative de renouvellement automatique...")
+                logger.warning(f"⚠️ Échec du token_login ({e}), session à renouveler.")
                 client = None
 
         # Tentative 2 (Fallback) : renouvellement via QR code / PIN si disponible
