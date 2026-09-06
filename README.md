@@ -31,7 +31,7 @@ Un bot Discord basé sur [pronotepy](https://github.com/bain3/pronotepy) pour re
 ### 1. Cloner et installer les dépendances
 
 ```bash
-git clone <url_du_depot>
+git clone https://github.com/Jellacious/PRONOTE-to-discord
 cd pronote-to-discord
 
 python3 -m venv .venv
