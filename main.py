@@ -264,14 +264,17 @@ class PronoteSession:
         """Récupère ou reconnecte le client Pronote (réutilise la session en cache et rafraîchit si > 2h ou expirée)."""
         now = datetime.datetime.now()
 
-        # Si le client est déjà connecté et récent (< 2 heures), on réutilise la session existante
+        # Si le client est déjà connecté et récent (< 2 heures), on vérifie la session
         if not force_refresh and self._client is not None and self._client.logged_in:
             if self._last_login and (now - self._last_login).total_seconds() < 7200: # 2 heures
                 try:
-                    self._client.session_check()
+                    refreshed = self._client.session_check()
+                    if refreshed:
+                        updated = self._client.export_credentials()
+                        self._save_credentials(updated)
                     return self._client
                 except Exception as e:
-                    logger.warning(f"⚠️ Session Pronote expirée ({e}), renouvellement nécessaire.")
+                    logger.warning(f"⚠️ Session Pronote expirée ({e}), renouvellement nécessaire...")
                     self._client = None
             else:
                 logger.info("🔄 Session Pronote de plus de 2h, renouvellement propre du token...")
@@ -288,7 +291,7 @@ class PronoteSession:
 
         client = None
 
-        # Tentative 1 : token_login (utilisation du token renouvelé)
+        # Reconnexion via token_login (renouvellement de token)
         token_keys = ["pronote_url", "username", "password", "uuid"]
         if all(k in credentials for k in token_keys):
             try:
@@ -309,47 +312,24 @@ class PronoteSession:
                 if not client.logged_in:
                     client = None
             except Exception as e:
-                logger.warning(f"⚠️ Échec du token_login ({e}), session à renouveler.")
+                err_msg = str(e)
+                if "suspended" in err_msg.lower():
+                    logger.error(f"❌ IP temporairement suspendue par Pronote : {e}")
+                else:
+                    logger.warning(f"⚠️ Échec du token_login ({e}).")
                 client = None
 
-        # Tentative 2 (Fallback) : renouvellement via QR code / PIN si disponible
-        if client is None:
-            pin = PRONOTE_RENEWAL_PIN or credentials.get("pin")
-            qr_data = credentials.get("qr_code") or credentials.get("qr_data")
-            uuid = credentials.get("uuid", "")
-
-            if qr_data and pin:
-                logger.info("🔄 Renouvellement automatique Pronote avec le QR code et le PIN...")
-                try:
-                    url = qr_data.get("url", "") if isinstance(qr_data, dict) else ""
-                    if url.endswith("parent.html"):
-                        client_class = pronotepy.ParentClient
-                    elif url.endswith("viescolaire.html"):
-                        client_class = pronotepy.VieScolaireClient
-                    else:
-                        client_class = pronotepy.Client
-
-                    client = client_class.qrcode_login(
-                        qr_code=qr_data,
-                        pin=str(pin),
-                        uuid=uuid
-                    )
-                    if not client.logged_in:
-                        client = None
-                except Exception as e:
-                    logger.error(f"❌ Échec du renouvellement qrcode_login : {e}")
-                    client = None
-
         if client and client.logged_in:
-            updated_creds = client.export_credentials()
-            if "qr_code" in credentials:
-                updated_creds["qr_code"] = credentials["qr_code"]
-            if "qr_data" in credentials:
-                updated_creds["qr_data"] = credentials["qr_data"]
-            if "pin" in credentials:
-                updated_creds["pin"] = credentials["pin"]
+            # Toujours mettre à jour credentials.json avec le nouveau token délivré par Pronote
+            try:
+                updated_creds = client.export_credentials()
+                for extra_k in ["qr_code", "qr_data", "pin"]:
+                    if extra_k in credentials and extra_k not in updated_creds:
+                        updated_creds[extra_k] = credentials[extra_k]
+                self._save_credentials(updated_creds)
+            except Exception as e:
+                logger.warning(f"Impossible d'exporter les nouveaux credentials : {e}")
 
-            self._save_credentials(updated_creds)
             self._client = client
             self._last_login = now
             return client
